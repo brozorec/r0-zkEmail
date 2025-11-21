@@ -8,11 +8,15 @@ use mailparse::MailHeaderMap;
 use methods::{DKIM_VERIFY_ELF, DKIM_VERIFY_ID};
 use risc0_zkvm::{default_prover, ExecutorEnv, Prover};
 use slog::{o, Discard, Logger};
-use zkemail_core::{DKIMOutput, Email};
 use std::{env, fs::File, io::Read, path::PathBuf};
 use trust_dns_resolver::TokioAsyncResolver;
+use zkemail_core::{DKIMOutput, Email};
 
-async fn verify_email(from_domain: &str, email_path: &PathBuf, target_hash: Option<String>) -> Result<()> {
+async fn verify_email(
+    from_domain: &str,
+    email_path: &PathBuf,
+    target_hash: Option<String>,
+) -> Result<()> {
     let logger = Logger::root(Discard, o!());
     let raw_email = read_email_file(email_path)?;
     let email = mailparse::parse_mail(raw_email.as_bytes())
@@ -135,6 +139,10 @@ fn generate_and_verify_proof(prover: &dyn Prover, email: Email) -> Result<()> {
         .map_err(|e| anyhow!("Failed to verify proof: {}", e))?;
 
     info!("ZK proof generated and verified successfully");
+
+    std::fs::write("receipt.bin", bincode::serialize(&receipt)?)?;
+    info!("Receipt saved to receipt.bin");
+
     Ok(())
 }
 
@@ -146,7 +154,10 @@ async fn main() -> Result<()> {
 
     let args: Vec<String> = env::args().collect();
     if args.len() < 3 || args.len() > 4 {
-        return Err(anyhow!("Usage: {} <from_domain> <email_path> [target_hash]", args[0]));
+        return Err(anyhow!(
+            "Usage: {} <from_domain> <email_path> [target_hash]",
+            args[0]
+        ));
     }
 
     let from_domain = &args[1];

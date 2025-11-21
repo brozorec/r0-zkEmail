@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 methods = { path = "../methods" }
-risc0-zkvm = { version = "3.0.0", features = ["unstable"]}
+risc0-zkvm = { version = "3.0.2", features = ["unstable"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 serde = "1.0"
 cfdkim = { git = "https://github.com/risc0-labs/dkim" } 
@@ -17,3 +17,4 @@ anyhow = "1.0.93"
 log = "0.4.22"
 postcard = { version = "1.0", features = ["alloc"] }
 zkemail-core = { path = "../core" }
+bincode = "1.3"
