@@ -140,8 +140,53 @@ fn generate_and_verify_proof(prover: &dyn Prover, email: Email) -> Result<()> {
 
     info!("ZK proof generated and verified successfully");
 
-    std::fs::write("receipt.bin", bincode::serialize(&receipt)?)?;
-    info!("Receipt saved to receipt.bin");
+    //std::fs::write("receipt.bin", bincode::serialize(&receipt)?)?;
+    //info!("Receipt saved to receipt.bin");
+
+    // Generate input.json for Groth16 proving
+    generate_groth16_input(&receipt)?;
+
+    Ok(())
+}
+
+fn generate_groth16_input(receipt: &risc0_zkvm::Receipt) -> Result<()> {
+    use serde_json::json;
+
+    info!("Generating input.json for Groth16 proving...");
+
+    // Check if this is a fake receipt (dev mode) by checking the inner receipt type
+    match &receipt.inner {
+        risc0_zkvm::InnerReceipt::Fake { .. } => {
+            warn!("Cannot generate Groth16 input from fake receipt (dev mode)");
+            warn!("Run with RISC0_DEV_MODE=0 to generate real proofs");
+            return Ok(());
+        }
+        _ => {
+            // Real receipt, continue
+        }
+    }
+
+    // Serialize the entire receipt to get the seal data
+    let receipt_bytes = bincode::serialize(receipt)?;
+    let seal_hex = hex::encode(&receipt_bytes);
+
+    // Create the input.json structure
+    let input_json = json!({
+        "seal": seal_hex,
+    });
+
+    // Write to input.json
+    std::fs::write("input.json", serde_json::to_string_pretty(&input_json)?)?;
+    info!("Generated input.json for Groth16 proving");
+    info!("Seal length: {} bytes", receipt_bytes.len());
+    info!("\nTo convert to Groth16:");
+    info!("  1. Install Docker on an x86_64 machine");
+    info!("  2. Clone risc0 repo: git clone https://github.com/risc0/risc0");
+    info!("  3. cd risc0/groth16_proof");
+    info!("  4. Build prover: docker build -f docker/prover.Dockerfile . -t risc0-groth16-prover");
+    info!("  5. Copy input.json to that directory");
+    info!("  6. Run: docker run --rm -v $(pwd):/mnt risc0-groth16-prover");
+    info!("  7. Get proof.json output");
 
     Ok(())
 }
