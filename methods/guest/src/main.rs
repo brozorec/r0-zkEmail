@@ -32,10 +32,18 @@ fn main() {
         _ => false,
     };
 
+    let hash_found = if let Some(target_hash) = &input.target_hash {
+        let raw_email_str = String::from_utf8_lossy(&input.raw_email);
+        raw_email_str.contains(target_hash)
+    } else {
+        false
+    };
+
     let output = DKIMOutput {
         from_domain_hash,
         public_key_hash,
         verified,
+        hash_found,
     };
 
     env::commit(&output);

@@ -6,6 +6,7 @@ pub struct Email {
     pub raw_email: Vec<u8>,
     pub public_key_type: String,
     pub public_key: Vec<u8>,
+    pub target_hash: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -13,4 +14,5 @@ pub struct DKIMOutput {
     pub from_domain_hash: Vec<u8>,
     pub public_key_hash: Vec<u8>,
     pub verified: bool,
+    pub hash_found: bool,
 }
