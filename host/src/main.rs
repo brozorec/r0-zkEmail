@@ -148,52 +148,49 @@ fn generate_and_verify_proof(prover: &dyn Prover, email: Email) -> Result<()> {
 
     info!("Receipt compressed successfully");
 
-    // Generate input.json for Groth16 proving
-    generate_groth16_input(&succinct_receipt)?;
+    // Convert to Groth16 format
+    let _groth16_receipt = convert_to_groth16(prover, &succinct_receipt)?;
 
     Ok(())
 }
 
-fn generate_groth16_input(receipt: &risc0_zkvm::Receipt) -> Result<()> {
-    info!("Generating input.json for Groth16 proving...");
+fn convert_to_groth16(
+    prover: &dyn Prover,
+    receipt: &risc0_zkvm::Receipt,
+) -> Result<risc0_zkvm::Receipt> {
+    info!("Converting receipt to Groth16 format...");
 
-    // Extract the seal bytes from the receipt
-    let seal_bytes = match &receipt.inner {
-        risc0_zkvm::InnerReceipt::Fake { .. } => {
-            warn!("Cannot generate Groth16 input from fake receipt (dev mode)");
-            warn!("Run with RISC0_DEV_MODE=0 to generate real proofs");
-            return Ok(());
-        }
-        risc0_zkvm::InnerReceipt::Succinct(succinct) => {
-            info!("Receipt is Succinct - ready for Groth16 conversion");
-            &succinct.seal
+    // Check if already in dev mode
+    if matches!(&receipt.inner, risc0_zkvm::InnerReceipt::Fake { .. }) {
+        warn!("Cannot generate Groth16 from fake receipt (dev mode)");
+        warn!("Run with RISC0_DEV_MODE=0 to generate real proofs");
+        return Ok(receipt.clone());
+    }
+
+    // Use the Prover's compress method with Groth16 options
+    // This handles the entire STARK-to-SNARK conversion automatically
+    info!("Compressing to Groth16 using Docker...");
+    let groth16_receipt = prover
+        .compress(&risc0_zkvm::ProverOpts::groth16(), receipt)
+        .map_err(|e| anyhow!("Failed to compress to Groth16: {}", e))?;
+
+    info!("Groth16 receipt generated successfully!");
+
+    // Verify it's actually a Groth16 receipt
+    match &groth16_receipt.inner {
+        risc0_zkvm::InnerReceipt::Groth16(_) => {
+            info!("Confirmed: Receipt is now in Groth16 format");
         }
         _ => {
-            error!("Receipt must be Succinct for Groth16 conversion");
-            error!("Current receipt type is not Succinct");
-            return Err(anyhow!(
-                "Receipt is not in Succinct format. You may need to compress it first."
-            ));
+            warn!("Receipt compression did not produce Groth16 format");
         }
-    };
+    }
 
-    // Use risc0-groth16's shrink_wrap function which handles the entire conversion
-    // This will generate the Groth16 proof directly using Docker
-    info!("Converting to Groth16 proof using Docker...");
-    let groth16_seal = risc0_groth16::prove::shrink_wrap(seal_bytes)
-        .map_err(|e| anyhow!("Failed to convert to Groth16: {}", e))?;
+    // Save the Groth16 receipt
+    std::fs::write("groth16_receipt.bin", bincode::serialize(&groth16_receipt)?)?;
+    info!("Groth16 receipt saved to groth16_receipt.bin");
 
-    info!("Groth16 proof generated successfully!");
-
-    // Save the Groth16 seal
-    // std::fs::write("groth16_seal.bin", bincode::serialize(&groth16_seal)?)?;
-    // info!("Groth16 seal saved to groth16_seal.bin");
-
-    // Also save the binary receipt for reference
-    // std::fs::write("receipt.bin", bincode::serialize(receipt)?)?;
-    // info!("Original receipt also saved to receipt.bin");
-
-    Ok(())
+    Ok(groth16_receipt)
 }
 
 #[tokio::main]
