@@ -177,27 +177,21 @@ fn generate_groth16_input(receipt: &risc0_zkvm::Receipt) -> Result<()> {
         }
     };
 
-    // Convert seal to the proper JSON format using risc0-groth16's seal_to_json
-    // This creates the correct format with pi_a, pi_b, pi_c fields as hex strings
-    let input_json_str = risc0_groth16::prove::seal_to_json(seal_bytes)
-        .map_err(|e| anyhow!("Failed to convert seal to JSON: {}", e))?;
+    // Use risc0-groth16's shrink_wrap function which handles the entire conversion
+    // This will generate the Groth16 proof directly using Docker
+    info!("Converting to Groth16 proof using Docker...");
+    let groth16_seal = risc0_groth16::prove::shrink_wrap(seal_bytes)
+        .map_err(|e| anyhow!("Failed to convert to Groth16: {}", e))?;
 
-    // Write to input.json
-    std::fs::write("input.json", &input_json_str)?;
-    info!("Generated input.json for Groth16 proving");
-    info!("Seal contains {} elements", seal_bytes.len());
+    info!("Groth16 proof generated successfully!");
+
+    // Save the Groth16 seal
+    // std::fs::write("groth16_seal.bin", bincode::serialize(&groth16_seal)?)?;
+    // info!("Groth16 seal saved to groth16_seal.bin");
 
     // Also save the binary receipt for reference
-    std::fs::write("receipt.bin", bincode::serialize(receipt)?)?;
-    info!("Receipt also saved to receipt.bin");
-
-    info!("\nTo convert to Groth16:");
-    info!("  1. On an x86_64 machine with Docker:");
-    info!("  2. git clone https://github.com/risc0/risc0 && cd risc0/groth16_proof");
-    info!("  3. docker build -f docker/prover.Dockerfile . -t risc0-groth16-prover");
-    info!("  4. Copy your input.json to that directory");
-    info!("  5. docker run --rm -v $(pwd):/mnt risc0-groth16-prover");
-    info!("  6. Output will be in proof.json");
+    // std::fs::write("receipt.bin", bincode::serialize(receipt)?)?;
+    // info!("Original receipt also saved to receipt.bin");
 
     Ok(())
 }
