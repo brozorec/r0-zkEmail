@@ -1,0 +1,36 @@
+# SMTP Receiver Configuration Example
+# Copy this file to config.toml and adjust settings
+
+[smtp]
+# Address to bind the SMTP server
+# Use "0.0.0.0" to listen on all interfaces
+# Use "127.0.0.1" for localhost only
+bind_address = "0.0.0.0"
+
+# SMTP port
+# 25 = Standard SMTP (requires root/setcap)
+# 587 = Submission port (requires root/setcap)
+# 2525 = Alternative port for testing (no special privileges)
+port = 2525
+
+# Maximum email size in bytes (50 MB default)
+max_message_size = 52428800
+
+# List of allowed sender domains (empty = allow all)
+# Example: ["gmail.com", "outlook.com", "example.com"]
+allowed_domains = []
+
+[storage]
+# Directory to store received .eml files
+email_dir = "./received_emails"
+
+# Directory to store verification proofs (JSON)
+proof_dir = "./proofs"
+
+[processing]
+# Automatically verify DKIM and generate ZK proofs
+auto_verify = true
+
+# Extract domain from sender email address
+# If true, extracts "example.com" from "user@example.com"
+extract_domain_from_sender = true

@@ -1,0 +1,39 @@
+[package]
+name = "smtp-receiver"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# SMTP server
+mailin-embedded = "0.8"
+
+# Email parsing
+mailparse = "0.14.0"
+
+# Async runtime
+tokio = { version = "1.41.1", features = ["full"] }
+
+# Integration with existing crates
+host = { path = "../host" }
+zkemail-core = { path = "../core" }
+
+# Error handling
+anyhow = "1.0.93"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+log = "0.4.22"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# File operations
+chrono = "0.4"
+
+# Config
+toml = "0.8"
+
+# Hex encoding
+hex = "0.4"
