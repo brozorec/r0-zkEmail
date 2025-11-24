@@ -3,6 +3,7 @@ use log::info;
 use risc0_zkvm::sha::Digestible;
 use sha2::{Digest, Sha256};
 use std::env;
+use zkemail_core::DKIMOutput;
 
 // Selector for the Stellar verifier contract
 const SELECTOR: &str = "73c457ba";
@@ -76,6 +77,9 @@ fn extract_groth16_proof_data(receipt: &risc0_zkvm::Receipt) -> Result<()> {
     let claim = receipt.claim()?;
     let claim_value = claim.as_value()?;
     let image_id = claim_value.pre.digest();
+
+    let output: DKIMOutput = receipt.journal.decode()?;
+    println!("{:?}", output);
 
     // Compute SHA-256 digest of the journal (required by Stellar verifier)
     let mut hasher = Sha256::new();
