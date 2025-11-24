@@ -179,54 +179,10 @@ fn convert_to_groth16(
     // Save the Groth16 receipt
     std::fs::write("groth16_receipt.bin", bincode::serialize(&groth16_receipt)?)?;
     info!("Groth16 receipt saved to groth16_receipt.bin");
-
-    // Extract and save the proof data for on-chain verification
-    extract_groth16_proof_data(&groth16_receipt)?;
+    info!("\nTo extract proof data for Stellar contract submission, run:");
+    info!("  cargo run --bin extractor [path/to/groth16_receipt.bin]");
 
     Ok(groth16_receipt)
-}
-
-fn extract_groth16_proof_data(receipt: &risc0_zkvm::Receipt) -> Result<()> {
-    info!("Extracting Groth16 proof data for on-chain verification...");
-
-    let groth16_receipt = match &receipt.inner {
-        risc0_zkvm::InnerReceipt::Groth16(g16) => g16,
-        _ => return Err(anyhow!("Receipt is not in Groth16 format")),
-    };
-
-    // Get the seal (Groth16 proof)
-    let seal = &groth16_receipt.seal;
-
-    // Convert seal to JSON format for easy viewing
-    use serde_json::json;
-
-    let proof_json = json!({
-        "seal": seal,
-        "journal": hex::encode(&receipt.journal.bytes),
-        "claim": receipt.claim()?.digest().to_string(),
-    });
-
-    std::fs::write(
-        "groth16_proof.json",
-        serde_json::to_string_pretty(&proof_json)?,
-    )?;
-    info!("Groth16 proof data saved to groth16_proof.json");
-
-    // Also save the seal bytes separately for contract submission
-    let seal_bytes = bincode::serialize(seal)?;
-    std::fs::write("groth16_seal.bin", &seal_bytes)?;
-    info!("Groth16 seal bytes saved to groth16_seal.bin");
-
-    info!("\n=== Groth16 Proof Data for Stellar Contract ===");
-    info!("Journal (hex): {}", hex::encode(&receipt.journal.bytes));
-    info!("Claim digest: {}", receipt.claim()?.digest());
-    info!("Seal size: {} bytes", seal_bytes.len());
-    info!("\nFiles generated:");
-    info!("  - groth16_receipt.bin: Full receipt (for verification)");
-    info!("  - groth16_proof.json: Human-readable proof data");
-    info!("  - groth16_seal.bin: Seal bytes for contract submission");
-
-    Ok(())
 }
 
 #[tokio::main]
@@ -237,21 +193,10 @@ async fn main() -> Result<()> {
 
     let args: Vec<String> = env::args().collect();
 
-    // Check if first argument is "extract-proof"
-    if args.len() >= 2 && args[1] == "extract-proof" {
-        let receipt_path = if args.len() >= 3 {
-            &args[2]
-        } else {
-            "groth16_receipt.bin"
-        };
-        return extract_proof_from_file(receipt_path);
-    }
-
-    // Original email verification flow
     if args.len() < 3 || args.len() > 4 {
         return Err(anyhow!(
-            "Usage:\n  {} <from_domain> <email_path> [target_hash]\n  {} extract-proof [receipt_path]",
-            args[0], args[0]
+            "Usage: {} <from_domain> <email_path> [target_hash]",
+            args[0]
         ));
     }
 
@@ -261,26 +206,6 @@ async fn main() -> Result<()> {
 
     verify_email(from_domain, &email_path, target_hash).await?;
     println!("Email verification and proof generation completed successfully");
-
-    Ok(())
-}
-
-fn extract_proof_from_file(receipt_path: &str) -> Result<()> {
-    info!("Reading Groth16 receipt from: {}", receipt_path);
-
-    // Read the receipt file
-    let receipt_bytes = std::fs::read(receipt_path)
-        .map_err(|e| anyhow!("Failed to read receipt file '{}': {}", receipt_path, e))?;
-
-    // Deserialize the receipt
-    let receipt: risc0_zkvm::Receipt = bincode::deserialize(&receipt_bytes)
-        .map_err(|e| anyhow!("Failed to deserialize receipt: {}", e))?;
-
-    // Extract the proof data
-    extract_groth16_proof_data(&receipt)?;
-
-    println!("\nProof data extraction completed successfully!");
-    println!("Check the generated files for contract submission data.");
 
     Ok(())
 }

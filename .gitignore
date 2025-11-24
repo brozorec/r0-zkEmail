@@ -16,3 +16,4 @@ target/
 testdata/**
 /profile.pb
 receipt*
+groth16_proof*
