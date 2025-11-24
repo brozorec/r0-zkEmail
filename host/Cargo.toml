@@ -3,6 +3,14 @@ name = "host"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+name = "host"
+path = "src/lib.rs"
+
+[[bin]]
+name = "host"
+path = "src/main.rs"
+
 [dependencies]
 methods = { path = "../methods" }
 risc0-zkvm = { version = "3.0.2", features = ["unstable"] }
