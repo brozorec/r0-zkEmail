@@ -1,15 +1,14 @@
 use anyhow::{anyhow, Result};
-use host::EmailVerifier;
+use host::verify_email;
 use std::{env, fs::File, io::Read, path::PathBuf};
 
-async fn verify_email(
+async fn verify(
     from_domain: &str,
     email_path: &PathBuf,
     target_hash: Option<String>,
 ) -> Result<()> {
     let raw_email = read_email_file(email_path)?;
-    let verifier = EmailVerifier::new().await?;
-    let output = verifier.verify_email(from_domain, &raw_email, target_hash).await?;
+    let output = verify_email(from_domain, &raw_email, target_hash).await?;
     println!("{:?}", output);
     Ok(())
 }
@@ -41,7 +40,7 @@ async fn main() -> Result<()> {
     let email_path = PathBuf::from(&args[2]);
     let target_hash = args.get(3).map(|s| s.to_string());
 
-    verify_email(from_domain, &email_path, target_hash).await?;
+    verify(from_domain, &email_path, target_hash).await?;
     println!("Email verification and proof generation completed successfully");
 
     Ok(())

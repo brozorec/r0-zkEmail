@@ -1,16 +1,13 @@
 use anyhow::{anyhow, Result};
 use chrono::Utc;
-use host::EmailVerifier;
+use host::verify_email;
 use log::{error, info, warn};
-use mailparse::MailHeaderMap;
-use std::path::PathBuf;
 use tokio::fs;
 
 use crate::config::Config;
 
 pub struct EmailHandler {
     config: Config,
-    verifier: EmailVerifier,
 }
 
 impl EmailHandler {
@@ -18,9 +15,7 @@ impl EmailHandler {
         fs::create_dir_all(&config.storage.email_dir).await?;
         fs::create_dir_all(&config.storage.proof_dir).await?;
 
-        let verifier = EmailVerifier::new().await?;
-
-        Ok(Self { config, verifier })
+        Ok(Self { config })
     }
 
     pub async fn handle_email(&self, raw_email: &str, from: &str, to: &[String]) -> Result<()> {
@@ -39,11 +34,17 @@ impl EmailHandler {
             info!("Extracted domain: {}", from_domain);
 
             if !self.is_domain_allowed(&from_domain) {
-                warn!("Domain {} not in allowed list, skipping verification", from_domain);
+                warn!(
+                    "Domain {} not in allowed list, skipping verification",
+                    from_domain
+                );
                 return Ok(());
             }
 
-            match self.verify_email_async(&from_domain, raw_email, &filename).await {
+            match self
+                .verify_email_async(&from_domain, raw_email, &filename)
+                .await
+            {
                 Ok(_) => info!("Email verification completed successfully for {}", filename),
                 Err(e) => error!("Email verification failed for {}: {}", filename, e),
             }
@@ -60,10 +61,7 @@ impl EmailHandler {
     ) -> Result<()> {
         info!("Starting DKIM verification for domain: {}", from_domain);
 
-        let output = self
-            .verifier
-            .verify_email(from_domain, raw_email, None)
-            .await?;
+        let output = verify_email(from_domain, raw_email, None).await?;
 
         info!("DKIM verification result: {:?}", output);
 
@@ -107,47 +105,4 @@ impl EmailHandler {
             .iter()
             .any(|d| d.eq_ignore_ascii_case(domain))
     }
-
-    pub fn parse_email_metadata(&self, raw_email: &str) -> Result<EmailMetadata> {
-        let parsed = mailparse::parse_mail(raw_email.as_bytes())?;
-
-        let from = parsed
-            .headers
-            .get_first_value("From")
-            .unwrap_or_else(|| "unknown".to_string());
-
-        let to = parsed
-            .headers
-            .get_first_value("To")
-            .unwrap_or_else(|| "unknown".to_string());
-
-        let subject = parsed
-            .headers
-            .get_first_value("Subject")
-            .unwrap_or_else(|| "(no subject)".to_string());
-
-        let date = parsed
-            .headers
-            .get_first_value("Date")
-            .unwrap_or_else(|| "unknown".to_string());
-
-        let has_dkim = parsed.headers.get_all_headers("DKIM-Signature").len() > 0;
-
-        Ok(EmailMetadata {
-            from,
-            to,
-            subject,
-            date,
-            has_dkim,
-        })
-    }
-}
-
-#[derive(Debug)]
-pub struct EmailMetadata {
-    pub from: String,
-    pub to: String,
-    pub subject: String,
-    pub date: String,
-    pub has_dkim: bool,
 }
