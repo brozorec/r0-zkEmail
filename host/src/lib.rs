@@ -92,7 +92,7 @@ pub async fn verify_email(
                 target_hash,
             };
 
-            self.generate_and_verify_proof(&email_proof)
+            generate_and_verify_proof(&email_proof)
         }
         result => {
             error!("DKIM verification failed: {}", result.with_detail());
@@ -137,7 +137,7 @@ fn generate_and_verify_proof(email: &Email) -> Result<DKIMOutput> {
     info!("Receipt compressed successfully");
 
     // Convert to Groth16 format
-    let _groth16_receipt = self.convert_to_groth16(&prover, &succinct_receipt)?;
+    let _groth16_receipt = convert_to_groth16(&prover, &succinct_receipt)?;
 
     Ok(output)
 }
