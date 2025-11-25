@@ -1,10 +1,12 @@
 use anyhow::{anyhow, Result};
 use chrono::Utc;
-use host::verify_email;
 use log::{error, info, warn};
 use tokio::fs;
 
 use crate::config::Config;
+
+#[cfg(feature = "verify")]
+use host::verify_email;
 
 pub struct EmailHandler {
     config: Config,
@@ -53,6 +55,7 @@ impl EmailHandler {
         Ok(())
     }
 
+    #[cfg(feature = "verify")]
     async fn verify_email_async(
         &self,
         from_domain: &str,
@@ -83,6 +86,21 @@ impl EmailHandler {
         fs::write(&proof_path, serde_json::to_string_pretty(&proof_data)?).await?;
         info!("Saved proof data to: {}", proof_path.display());
 
+        Ok(())
+    }
+
+    #[cfg(not(feature = "verify"))]
+    async fn verify_email_async(
+        &self,
+        from_domain: &str,
+        _raw_email: &str,
+        filename: &str,
+    ) -> Result<()> {
+        warn!(
+            "Verification disabled (build without 'verify' feature). \
+             Email {} from {} saved but not verified.",
+            filename, from_domain
+        );
         Ok(())
     }
 

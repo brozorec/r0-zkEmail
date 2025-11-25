@@ -3,18 +3,19 @@ name = "smtp-receiver"
 version = "0.1.0"
 edition = "2021"
 
+[features]
+default = []
+verify = ["host", "hex"]
+
 [dependencies]
 # SMTP server
 mailin-embedded = "0.8"
 
-# Email parsing
-mailparse = "0.14.0"
-
 # Async runtime
 tokio = { version = "1.41.1", features = ["full"] }
 
-# Integration with existing crates
-host = { path = "../host" }
+# Integration with existing crates (optional for macOS builds)
+host = { path = "../host", optional = true }
 zkemail-core = { path = "../core" }
 
 # Error handling
@@ -35,5 +36,5 @@ chrono = "0.4"
 # Config
 toml = "0.8"
 
-# Hex encoding
-hex = "0.4"
+# Hex encoding (only needed with verify feature)
+hex = { version = "0.4", optional = true }
