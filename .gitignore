@@ -21,3 +21,4 @@ config.toml
 log
 .stfolder/
 .stignore
+certs/

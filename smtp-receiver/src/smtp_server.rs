@@ -109,10 +109,16 @@ impl SmtpServer {
         let handler = SmtpHandler::new(self.email_handler.clone(), runtime);
 
         let mut server = Server::new(handler);
+        
+        let ssl_config = SslConfig::SelfSigned {
+            cert_path: self.config.smtp.tls.cert_path.to_string_lossy().into_owned(),
+            key_path: self.config.smtp.tls.key_path.to_string_lossy().into_owned(),
+        };
+
         server
             .with_name("r0-zkEmail SMTP Receiver")
-            .with_ssl(SslConfig::None)
-            .map_err(|e| anyhow::anyhow!("Failed to configure server: {}", e))?
+            .with_ssl(ssl_config)
+            .map_err(|e| anyhow::anyhow!("Failed to configure SSL: {}", e))?
             .with_addr(&bind_addr)
             .map_err(|e| anyhow::anyhow!("Failed to bind to address: {}", e))?;
 

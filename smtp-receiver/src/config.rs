@@ -14,6 +14,13 @@ pub struct SmtpConfig {
     pub port: u16,
     pub max_message_size: usize,
     pub allowed_domains: Vec<String>,
+    pub tls: TlsConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TlsConfig {
+    pub cert_path: PathBuf,
+    pub key_path: PathBuf,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -36,6 +43,10 @@ impl Default for Config {
                 port: 2525,
                 max_message_size: 50 * 1024 * 1024,
                 allowed_domains: vec![],
+                tls: TlsConfig {
+                    cert_path: PathBuf::from("./certs/cert.pem"),
+                    key_path: PathBuf::from("./certs/key.pem"),
+                },
             },
             storage: StorageConfig {
                 email_dir: PathBuf::from("./received_emails"),

@@ -31,6 +31,8 @@ async fn main() -> Result<()> {
     println!("\nSMTP Receiver Configuration:");
     println!("  Bind: {}:{}", config.smtp.bind_address, config.smtp.port);
     println!("  Max message size: {} MB", config.smtp.max_message_size / (1024 * 1024));
+    println!("  TLS cert: {}", config.smtp.tls.cert_path.display());
+    println!("  TLS key: {}", config.smtp.tls.key_path.display());
     println!("  Email storage: {}", config.storage.email_dir.display());
     println!("  Proof storage: {}", config.storage.proof_dir.display());
     println!("  Auto-verify: {}", config.processing.auto_verify);
