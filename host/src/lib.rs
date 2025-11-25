@@ -9,13 +9,33 @@ use methods::{DKIM_VERIFY_ELF, DKIM_VERIFY_ID};
 use risc0_zkvm::{default_prover, ExecutorEnv, Prover};
 use slog::{o, Discard, Logger};
 use trust_dns_resolver::TokioAsyncResolver;
-use zkemail_core::{DKIMOutput, Email};
+use zkemail_core::{Email, EmailPair, PaymentReceipt};
 
-pub async fn verify_email(
-    from_domain: &str,
-    raw_email: &str,
-    target_hash: Option<String>,
-) -> Result<DKIMOutput> {
+/// Verify a pair of emails and generate a ZK proof
+/// - sender_email: Original email with PAYMENT DATA
+/// - receiver_email: Reply email with PASSKEY DATA
+pub async fn verify_email_pair(
+    sender_domain: &str,
+    sender_raw: &str,
+    receiver_domain: &str,
+    receiver_raw: &str,
+) -> Result<PaymentReceipt> {
+    info!("Verifying sender email from domain: {}", sender_domain);
+    let sender_email = prepare_email(sender_domain, sender_raw).await?;
+
+    info!("Verifying receiver email from domain: {}", receiver_domain);
+    let receiver_email = prepare_email(receiver_domain, receiver_raw).await?;
+
+    let email_pair = EmailPair {
+        sender_email,
+        receiver_email,
+    };
+
+    generate_and_verify_proof(&email_pair)
+}
+
+/// Prepare a single email for proof generation by extracting DKIM public key
+async fn prepare_email(from_domain: &str, raw_email: &str) -> Result<Email> {
     let logger = Logger::root(Discard, o!());
     let email = mailparse::parse_mail(raw_email.as_bytes())
         .map_err(|e| anyhow!("Failed to parse email: {}", e))?;
@@ -83,16 +103,13 @@ pub async fn verify_email(
         result if result.with_detail().starts_with("pass") => {
             info!("DKIM verification passed: {}", result.with_detail());
 
-            let email_proof = Email {
+            Ok(Email {
                 from_domain: from_domain.to_string(),
                 raw_email: raw_email.as_bytes().to_vec(),
                 public_key_type: key_type.ok_or_else(|| anyhow!("No key type found"))?,
                 public_key: extracted_public_key
                     .ok_or_else(|| anyhow!("No public key extracted"))?,
-                target_hash,
-            };
-
-            generate_and_verify_proof(&email_proof)
+            })
         }
         result => {
             error!("DKIM verification failed: {}", result.with_detail());
@@ -104,12 +121,12 @@ pub async fn verify_email(
     }
 }
 
-fn generate_and_verify_proof(email: &Email) -> Result<DKIMOutput> {
+fn generate_and_verify_proof(email_pair: &EmailPair) -> Result<PaymentReceipt> {
     debug!("Starting ZK proof generation");
 
     let prover = default_prover();
 
-    let input = postcard::to_allocvec(&email).unwrap();
+    let input = postcard::to_allocvec(&email_pair).unwrap();
     let env = ExecutorEnv::builder()
         .write_frame(&input)
         .build()
@@ -120,7 +137,7 @@ fn generate_and_verify_proof(email: &Email) -> Result<DKIMOutput> {
         .map_err(|e| anyhow!("Failed to generate proof: {}", e))?;
 
     let receipt = prove_info.receipt;
-    let output: DKIMOutput = receipt.journal.decode()?;
+    let output: PaymentReceipt = receipt.journal.decode()?;
 
     receipt
         .verify(DKIM_VERIFY_ID)

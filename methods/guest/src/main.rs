@@ -1,50 +1,87 @@
 use cfdkim::{verify_email_with_key, DkimPublicKey};
+use dkim_verify::{
+    extract_email_address, extract_passkey, extract_payment_data, get_email_body, get_header,
+};
 use mailparse::parse_mail;
 use risc0_zkvm::guest::env;
-use sha2::{Digest, Sha256};
 use slog::{o, Discard, Logger};
-use zkemail_core::{DKIMOutput, Email};
+use zkemail_core::{Email, EmailPair, PaymentReceipt};
 
 fn main() {
     let input: Vec<u8> = env::read_frame();
-    let input: Email = postcard::from_bytes(&input).unwrap();
+    let input: EmailPair = postcard::from_bytes(&input).unwrap();
 
     let logger = Logger::root(Discard, o!());
 
-    let parsed_email = parse_mail(&input.raw_email).unwrap();
+    // Verify DKIM signatures for BOTH emails
+    let sender_verified = verify_email(&logger, &input.sender_email);
+    let receiver_verified = verify_email(&logger, &input.receiver_email);
 
-    let public_key =
-        DkimPublicKey::try_from_bytes(&input.public_key, &input.public_key_type).unwrap();
+    // Parse both emails to extract headers
+    let sender_parsed =
+        parse_mail(&input.sender_email.raw_email).expect("Failed to parse sender email");
+    let receiver_parsed =
+        parse_mail(&input.receiver_email.raw_email).expect("Failed to parse receiver email");
 
-    let mut hasher = Sha256::new();
-    hasher.update(input.from_domain.as_bytes());
-    let from_domain_hash = hasher.finalize().to_vec();
+    // Get From/To headers
+    let sender_from = get_header(&sender_parsed, "From").expect("Missing From in sender email");
+    let sender_to = get_header(&sender_parsed, "To").expect("Missing To in sender email");
+    let receiver_from =
+        get_header(&receiver_parsed, "From").expect("Missing From in receiver email");
+    let receiver_to = get_header(&receiver_parsed, "To").expect("Missing To in receiver email");
 
-    let mut hasher = Sha256::new();
-    hasher.update(&input.public_key);
-    let public_key_hash = hasher.finalize().to_vec();
+    // Extract email addresses
+    let sender_addr = extract_email_address(&sender_from);
+    let receiver_addr = extract_email_address(&receiver_from);
 
-    let result =
-        verify_email_with_key(&logger, &input.from_domain, &parsed_email, public_key).unwrap();
+    // Validate email chain:
+    // 1. Sender's email must have been sent TO the receiver
+    assert!(
+        sender_to.contains(&receiver_addr),
+        "Sender's email must be addressed to the receiver"
+    );
+    // 2. Receiver's reply must be addressed TO the original sender
+    assert!(
+        receiver_to.contains(&sender_addr),
+        "Receiver's reply must be addressed to the original sender"
+    );
 
-    let verified = match result {
-        result if result.with_detail().starts_with("pass") => true,
-        _ => false,
-    };
+    // Extract payment data from sender's email (DKIM verified)
+    let sender_body = get_email_body(&input.sender_email.raw_email);
+    let (stellar_sender, amount, nonce) = extract_payment_data(&sender_body)
+        .expect("Failed to extract payment data from sender email");
 
-    let hash_found = if let Some(target_hash) = &input.target_hash {
-        let raw_email_str = String::from_utf8_lossy(&input.raw_email);
-        raw_email_str.contains(target_hash)
-    } else {
-        false
-    };
+    // Extract passkey from receiver's email (DKIM verified)
+    let receiver_body = get_email_body(&input.receiver_email.raw_email);
+    let receiver_passkey =
+        extract_passkey(&receiver_body).expect("Failed to extract passkey from receiver email");
 
-    let output = DKIMOutput {
-        from_domain_hash,
-        public_key_hash,
-        verified,
-        hash_found,
+    let output = PaymentReceipt {
+        receiver_passkey,
+        amount,
+        sender: stellar_sender,
+        nonce,
+        verified: sender_verified && receiver_verified,
     };
 
     env::commit(&output);
+}
+
+/// Verify DKIM signature of an email
+fn verify_email(logger: &slog::Logger, email: &Email) -> bool {
+    let parsed_email = match parse_mail(&email.raw_email) {
+        Ok(e) => e,
+        Err(_) => return false,
+    };
+
+    let public_key = match DkimPublicKey::try_from_bytes(&email.public_key, &email.public_key_type)
+    {
+        Ok(k) => k,
+        Err(_) => return false,
+    };
+
+    match verify_email_with_key(logger, &email.from_domain, &parsed_email, public_key) {
+        Ok(result) => result.with_detail().starts_with("pass"),
+        Err(_) => false,
+    }
 }

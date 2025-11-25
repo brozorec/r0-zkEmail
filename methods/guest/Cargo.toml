@@ -5,6 +5,17 @@ edition = "2021"
 
 [workspace]
 
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "dkim_verify"
+path = "src/main.rs"
+
+[[bin]]
+name = "test_parser"
+path = "src/bin/test_parser.rs"
+
 [dependencies]
 cfdkim = { git = "https://github.com/risc0-labs/dkim", default-features = false, features = [
 ] }

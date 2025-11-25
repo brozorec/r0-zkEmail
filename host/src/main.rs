@@ -1,15 +1,25 @@
 use anyhow::{anyhow, Result};
-use host::verify_email;
+use host::verify_email_pair;
 use std::{env, fs::File, io::Read, path::PathBuf};
 
 async fn verify(
-    from_domain: &str,
-    email_path: &PathBuf,
-    target_hash: Option<String>,
+    sender_domain: &str,
+    sender_path: &PathBuf,
+    receiver_domain: &str,
+    receiver_path: &PathBuf,
 ) -> Result<()> {
-    let raw_email = read_email_file(email_path)?;
-    let output = verify_email(from_domain, &raw_email, target_hash).await?;
-    println!("{:?}", output);
+    let sender_raw = read_email_file(sender_path)?;
+    let receiver_raw = read_email_file(receiver_path)?;
+
+    let output = verify_email_pair(sender_domain, &sender_raw, receiver_domain, &receiver_raw).await?;
+
+    println!("\n=== Payment Receipt ===");
+    println!("Sender (Stellar): {}", output.sender);
+    println!("Amount: {}", output.amount);
+    println!("Nonce: {}", output.nonce);
+    println!("Passkey: {} bytes", output.receiver_passkey.len());
+    println!("Verified: {}", output.verified);
+
     Ok(())
 }
 
@@ -29,19 +39,20 @@ async fn main() -> Result<()> {
 
     let args: Vec<String> = env::args().collect();
 
-    if args.len() < 3 || args.len() > 4 {
+    if args.len() != 5 {
         return Err(anyhow!(
-            "Usage: {} <from_domain> <email_path> [target_hash]",
+            "Usage: {} <sender_domain> <sender.eml> <receiver_domain> <receiver.eml>",
             args[0]
         ));
     }
 
-    let from_domain = &args[1];
-    let email_path = PathBuf::from(&args[2]);
-    let target_hash = args.get(3).map(|s| s.to_string());
+    let sender_domain = &args[1];
+    let sender_path = PathBuf::from(&args[2]);
+    let receiver_domain = &args[3];
+    let receiver_path = PathBuf::from(&args[4]);
 
-    verify(from_domain, &email_path, target_hash).await?;
-    println!("Email verification and proof generation completed successfully");
+    verify(sender_domain, &sender_path, receiver_domain, &receiver_path).await?;
+    println!("\nEmail verification and proof generation completed successfully");
 
     Ok(())
 }
