@@ -17,3 +17,7 @@ testdata/**
 /profile.pb
 receipt*
 groth16_proof*
+config.toml
+log
+.stfolder/
+.stignore
