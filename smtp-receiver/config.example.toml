@@ -20,6 +20,10 @@ max_message_size = 52428800
 # Example: ["gmail.com", "outlook.com", "example.com"]
 allowed_domains = []
 
+[smtp.tls]
+cert_path = "./certs/cert.pem"
+key_path = "./certs/key.pem"
+
 [storage]
 # Directory to store received .eml files
 email_dir = "./received_emails"
@@ -28,9 +32,7 @@ email_dir = "./received_emails"
 proof_dir = "./proofs"
 
 [processing]
-# Automatically verify DKIM and generate ZK proofs
-auto_verify = true
-
-# Extract domain from sender email address
-# If true, extracts "example.com" from "user@example.com"
-extract_domain_from_sender = true
+# Validate that emails contain expected payment/passkey data format before storing
+# If true, only emails with valid payment data or passkey blocks are saved
+# If false, all emails are saved regardless of content
+validate_email_format = true

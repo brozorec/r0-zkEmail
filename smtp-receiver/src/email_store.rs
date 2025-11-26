@@ -1,7 +1,19 @@
-use chrono::{DateTime, Utc};
-use log::{debug, info, warn};
+use chrono::Utc;
+use email_parser::{extract_passkey, extract_payment_data, get_email_body};
+use log::{debug, warn};
 use std::path::PathBuf;
 use tokio::fs;
+
+/// Type of email based on its content
+#[derive(Debug, Clone, PartialEq)]
+pub enum EmailType {
+    /// Sender's email with payment data
+    PaymentRequest,
+    /// Receiver's reply with passkey data
+    PasskeyResponse,
+    /// Unknown format
+    Unknown,
+}
 
 /// Represents an email in a pair
 #[derive(Debug, Clone)]
@@ -12,6 +24,8 @@ pub struct PendingEmail {
     pub raw_email: String,
     /// Path where this email is stored on disk
     pub file_path: PathBuf,
+    /// Type of email based on content
+    pub email_type: EmailType,
 }
 
 /// Result of attempting to match an incoming email
@@ -29,6 +43,8 @@ pub enum MatchResult {
     },
     /// Could not determine Message-ID or In-Reply-To
     NoMessageId,
+    /// Email does not match expected format (no payment data or passkey)
+    InvalidFormat,
 }
 
 /// File-based store for pending emails awaiting their pair
@@ -36,21 +52,53 @@ pub enum MatchResult {
 pub struct EmailStore {
     /// Directory where emails are stored
     email_dir: PathBuf,
+    /// Whether to validate email format before storing
+    validate_format: bool,
 }
 
 impl EmailStore {
-    pub fn new(email_dir: PathBuf) -> Self {
-        Self { email_dir }
+    pub fn new(email_dir: PathBuf, validate_format: bool) -> Self {
+        Self {
+            email_dir,
+            validate_format,
+        }
+    }
+
+    /// Determine email type by checking for payment data or passkey
+    fn get_email_type(raw_email: &str) -> EmailType {
+        let body = get_email_body(raw_email.as_bytes());
+
+        if extract_payment_data(&body).is_some() {
+            EmailType::PaymentRequest
+        } else if extract_passkey(&body).is_some() {
+            EmailType::PasskeyResponse
+        } else {
+            EmailType::Unknown
+        }
+    }
+
+    /// Generate a filename for storing an email
+    fn generate_filename(from: &str) -> String {
+        let timestamp = Utc::now().format("%Y%m%d_%H%M%S_%f");
+        let sanitized_from = from.replace(['@', '.', '<', '>'], "_");
+        format!("{}_{}.eml", timestamp, sanitized_from)
+    }
+
+    /// Save email to disk
+    async fn save_email(&self, raw_email: &str, from: &str) -> Result<PathBuf, std::io::Error> {
+        let filename = Self::generate_filename(from);
+        let path = self.email_dir.join(&filename);
+        fs::write(&path, raw_email).await?;
+        Ok(path)
     }
 
     /// Process an incoming email and attempt to match it with a pending pair
-    /// The email has already been saved to disk at `saved_path`
+    /// Saves email to disk only if it results in Stored or Matched
     pub async fn process_email(
         &self,
         raw_email: &str,
         from: &str,
         to: &[String],
-        saved_path: PathBuf,
     ) -> MatchResult {
         let parsed = match mailparse::parse_mail(raw_email.as_bytes()) {
             Ok(p) => p,
@@ -60,14 +108,33 @@ impl EmailStore {
             }
         };
 
-        let message_id = Self::extract_header(&parsed, "Message-ID");
+        // Detect email type
+        let email_type = Self::get_email_type(raw_email);
+        debug!("Detected email type: {:?}", email_type);
+
+        // Validate format if enabled
+        if self.validate_format && email_type == EmailType::Unknown {
+            warn!("Email does not contain valid payment data or passkey. Rejecting.");
+            return MatchResult::InvalidFormat;
+        }
+
+        let message_id_raw = Self::extract_header(&parsed, "Message-ID");
         let in_reply_to = Self::extract_header(&parsed, "In-Reply-To");
         let references = Self::extract_header(&parsed, "References");
 
         debug!(
             "Email headers - Message-ID: {:?}, In-Reply-To: {:?}, References: {:?}",
-            message_id, in_reply_to, references
+            message_id_raw, in_reply_to, references
         );
+
+        // Check if we have a Message-ID before proceeding
+        let message_id = match &message_id_raw {
+            Some(id) => Self::normalize_message_id(id),
+            None => {
+                warn!("Email has no Message-ID header, cannot track for pairing");
+                return MatchResult::NoMessageId;
+            }
+        };
 
         // Try to find a reference to a pending email (this is a reply)
         let reference_id = in_reply_to.or_else(|| {
@@ -80,19 +147,22 @@ impl EmailStore {
 
             // Try to find the original email on disk
             if let Some(sender_email) = self.find_pending_email(&normalized_ref).await {
-                info!(
-                    "Matched reply to original email. Message-ID: {}",
-                    normalized_ref
-                );
+                // Save the receiver email to disk
+                let saved_path = match self.save_email(raw_email, from).await {
+                    Ok(p) => p,
+                    Err(e) => {
+                        warn!("Failed to save receiver email: {}", e);
+                        return MatchResult::NoMessageId;
+                    }
+                };
 
                 let receiver_email = PendingEmail {
-                    message_id: message_id
-                        .map(|m| Self::normalize_message_id(&m))
-                        .unwrap_or_default(),
+                    message_id: message_id.clone(),
                     from: from.to_string(),
                     to: to.to_vec(),
                     raw_email: raw_email.to_string(),
                     file_path: saved_path,
+                    email_type,
                 };
 
                 return MatchResult::Matched {
@@ -102,20 +172,15 @@ impl EmailStore {
             }
         }
 
-        // No match found - this is either the first email or an unrelated email
-        let message_id = match message_id {
-            Some(id) => Self::normalize_message_id(&id),
-            None => {
-                warn!("Email has no Message-ID header, cannot track for pairing");
+        // No match found - store as pending (first email in pair)
+        // Save the sender email to disk
+        let saved_path = match self.save_email(raw_email, from).await {
+            Ok(p) => p,
+            Err(e) => {
+                warn!("Failed to save sender email: {}", e);
                 return MatchResult::NoMessageId;
             }
         };
-
-        info!(
-            "Stored email as pending, waiting for reply. Message-ID: {}, Path: {}",
-            message_id,
-            saved_path.display()
-        );
 
         MatchResult::Stored {
             message_id,
@@ -170,12 +235,15 @@ impl EmailStore {
 
         // Extract other fields
         let from = Self::extract_header(&parsed, "From").unwrap_or_default();
+        let email_type = Self::get_email_type(&contents);
+
         Some(PendingEmail {
             message_id: normalized,
             from,
             to: vec![],
             raw_email: contents,
             file_path: path.clone(),
+            email_type,
         })
     }
 

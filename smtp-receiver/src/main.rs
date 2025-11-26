@@ -36,6 +36,7 @@ async fn main() -> Result<()> {
     println!("  TLS key: {}", config.smtp.tls.key_path.display());
     println!("  Email storage: {}", config.storage.email_dir.display());
     println!("  Proof storage: {}", config.storage.proof_dir.display());
+    println!("  Validate email format: {}", config.processing.validate_email_format);
     if !config.smtp.allowed_domains.is_empty() {
         println!("  Allowed domains: {:?}", config.smtp.allowed_domains);
     } else {

@@ -1,7 +1,9 @@
 use anyhow::{anyhow, Result};
-use chrono::Utc;
 use log::{error, info, warn};
 use tokio::fs;
+
+#[cfg(feature = "verify")]
+use chrono::Utc;
 
 use crate::config::Config;
 use crate::email_store::{EmailStore, MatchResult, PendingEmail};
@@ -19,7 +21,10 @@ impl EmailHandler {
         fs::create_dir_all(&config.storage.email_dir).await?;
         fs::create_dir_all(&config.storage.proof_dir).await?;
 
-        let email_store = EmailStore::new(config.storage.email_dir.clone());
+        let email_store = EmailStore::new(
+            config.storage.email_dir.clone(),
+            config.processing.validate_email_format,
+        );
 
         Ok(Self {
             config,
@@ -30,30 +35,22 @@ impl EmailHandler {
     pub async fn handle_email(&self, raw_email: &str, from: &str, to: &[String]) -> Result<()> {
         info!("Received email from: {} to: {:?}", from, to);
 
-        // Save email to disk
-        let timestamp = Utc::now().format("%Y%m%d_%H%M%S_%f");
-        let sanitized_from = from.replace(['@', '.', '<', '>'], "_");
-        let filename = format!("{}_{}.eml", timestamp, sanitized_from);
-        let email_path = self.config.storage.email_dir.join(&filename);
-
-        fs::write(&email_path, raw_email).await?;
-        info!("Saved email to: {}", email_path.display());
-
         let from_domain = self.extract_domain(from)?;
         info!("Extracted domain: {}", from_domain);
 
         if !self.is_domain_allowed(&from_domain) {
             warn!(
-                "Domain {} not in allowed list, skipping verification",
+                "Domain {} not in allowed list, skipping",
                 from_domain
             );
             return Ok(());
         }
 
         // Process email through the store to match pairs
+        // Email is saved to disk only if it results in Stored or Matched
         let match_result = self
             .email_store
-            .process_email(raw_email, from, to, email_path.clone())
+            .process_email(raw_email, from, to)
             .await;
 
         match match_result {
@@ -86,6 +83,9 @@ impl EmailHandler {
             MatchResult::NoMessageId => {
                 warn!("Email has no Message-ID, cannot track for pairing. Skipping.");
             }
+            MatchResult::InvalidFormat => {
+                warn!("Email does not match expected format (no payment data or passkey). Skipping.");
+            }
         }
 
         Ok(())
@@ -97,15 +97,18 @@ impl EmailHandler {
         sender_email: &PendingEmail,
         receiver_email: &PendingEmail,
     ) -> Result<()> {
+        let sender_domain = self.extract_domain(&sender_email.from)?;
+        let receiver_domain = self.extract_domain(&receiver_email.from)?;
+
         info!(
             "Starting DKIM verification for email pair. Sender domain: {}, Receiver domain: {}",
-            sender_email.from_domain, receiver_email.from_domain
+            sender_domain, receiver_domain
         );
 
         let output = verify_email_pair(
-            &sender_email.from_domain,
+            &sender_domain,
             &sender_email.raw_email,
-            &receiver_email.from_domain,
+            &receiver_domain,
             &receiver_email.raw_email,
         )
         .await?;
@@ -123,15 +126,13 @@ impl EmailHandler {
             "timestamp": Utc::now().to_rfc3339(),
             "sender": {
                 "from": sender_email.from,
-                "domain": sender_email.from_domain,
+                "domain": sender_domain,
                 "message_id": sender_email.message_id,
-                "received_at": sender_email.received_at.to_rfc3339(),
             },
             "receiver": {
                 "from": receiver_email.from,
-                "domain": receiver_email.from_domain,
+                "domain": receiver_domain,
                 "message_id": receiver_email.message_id,
-                "received_at": receiver_email.received_at.to_rfc3339(),
             },
             "output": {
                 "sender": output.sender,

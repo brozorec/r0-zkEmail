@@ -5,6 +5,8 @@ use std::path::PathBuf;
 pub struct Config {
     pub smtp: SmtpConfig,
     pub storage: StorageConfig,
+    #[serde(default)]
+    pub processing: ProcessingConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,6 +30,13 @@ pub struct StorageConfig {
     pub proof_dir: PathBuf,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct ProcessingConfig {
+    /// Validate that emails contain expected payment/passkey data format before storing
+    #[serde(default)]
+    pub validate_email_format: bool,
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -44,6 +53,9 @@ impl Default for Config {
             storage: StorageConfig {
                 email_dir: PathBuf::from("./received_emails"),
                 proof_dir: PathBuf::from("./proofs"),
+            },
+            processing: ProcessingConfig {
+                validate_email_format: true,
             },
         }
     }
