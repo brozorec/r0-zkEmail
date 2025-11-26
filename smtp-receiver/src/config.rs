@@ -5,7 +5,6 @@ use std::path::PathBuf;
 pub struct Config {
     pub smtp: SmtpConfig,
     pub storage: StorageConfig,
-    pub processing: ProcessingConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,12 +28,6 @@ pub struct StorageConfig {
     pub proof_dir: PathBuf,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ProcessingConfig {
-    pub auto_verify: bool,
-    pub extract_domain_from_sender: bool,
-}
-
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -51,10 +44,6 @@ impl Default for Config {
             storage: StorageConfig {
                 email_dir: PathBuf::from("./received_emails"),
                 proof_dir: PathBuf::from("./proofs"),
-            },
-            processing: ProcessingConfig {
-                auto_verify: true,
-                extract_domain_from_sender: true,
             },
         }
     }

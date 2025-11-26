@@ -1,5 +1,6 @@
 mod config;
 mod email_handler;
+mod email_store;
 mod smtp_server;
 
 use anyhow::Result;
@@ -35,7 +36,6 @@ async fn main() -> Result<()> {
     println!("  TLS key: {}", config.smtp.tls.key_path.display());
     println!("  Email storage: {}", config.storage.email_dir.display());
     println!("  Proof storage: {}", config.storage.proof_dir.display());
-    println!("  Auto-verify: {}", config.processing.auto_verify);
     if !config.smtp.allowed_domains.is_empty() {
         println!("  Allowed domains: {:?}", config.smtp.allowed_domains);
     } else {
