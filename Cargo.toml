@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["host", "methods", "core", "extractor", "smtp-receiver", "contracts"]
+members = ["host", "methods", "core", "extractor", "smtp-receiver", "contract"]
 
 # Always optimize; building and running the guest takes much longer without optimization.
 [profile.dev]
