@@ -36,15 +36,16 @@ pub struct JournalOutput {
 
 /// Decodes a RISC0 journal into JournalOutput.
 ///
-/// The journal format (little-endian):
+/// RISC0 journal uses word-aligned serialization where each byte/char is stored as u32.
+/// Format:
 /// - 4 bytes: length of receiver_passkey (should be 65)
-/// - 65 bytes: receiver_passkey (uncompressed secp256r1 public key)
+/// - 65 * 4 bytes: receiver_passkey (each byte as u32)
 /// - 16 bytes: amount (i128, little-endian)
 /// - 4 bytes: length of sender string
-/// - N bytes: sender string (UTF-8 Stellar address)
+/// - N * 4 bytes: sender string (each char as u32)
 /// - 4 bytes: nonce (i32, little-endian)
-/// - 1 byte: verified (0 or 1)
-fn decode_journal(env: &Env, journal: &Bytes) -> JournalOutput {
+/// - 4 bytes: verified (bool as u32)
+pub(crate) fn decode_journal(e: &Env, journal: &Bytes) -> JournalOutput {
     let mut offset: u32 = 0;
 
     // Read receiver_passkey length (4 bytes, little-endian)
@@ -52,9 +53,9 @@ fn decode_journal(env: &Env, journal: &Bytes) -> JournalOutput {
     assert!(passkey_len == 65, "receiver_passkey must be 65 bytes");
     offset += 4;
 
-    // Read receiver_passkey (65 bytes)
-    let receiver_passkey = read_bytes65(env, journal, offset);
-    offset += 65;
+    // Read receiver_passkey (65 bytes, each stored as u32)
+    let receiver_passkey = read_bytes65_words(e, journal, offset);
+    offset += 65 * 4;
 
     // Read amount (16 bytes, i128 little-endian)
     let amount = read_i128_le(journal, offset);
@@ -64,16 +65,16 @@ fn decode_journal(env: &Env, journal: &Bytes) -> JournalOutput {
     let sender_len = read_u32_le(journal, offset);
     offset += 4;
 
-    // Read sender string
-    let sender = read_string(env, journal, offset, sender_len);
+    // Read sender string (raw bytes, NOT word-aligned)
+    let sender = read_string(e, journal, offset, sender_len);
     offset += sender_len;
 
     // Read nonce (4 bytes, i32 little-endian)
     let nonce = read_i32_le(journal, offset);
     offset += 4;
 
-    // Read verified (1 byte)
-    let verified = journal.get(offset).expect("missing verified byte") != 0;
+    // Read verified (stored as u32)
+    let verified = read_u32_le(journal, offset) != 0;
 
     JournalOutput {
         receiver_passkey,
@@ -84,7 +85,7 @@ fn decode_journal(env: &Env, journal: &Bytes) -> JournalOutput {
     }
 }
 
-fn read_u32_le(bytes: &Bytes, offset: u32) -> u32 {
+pub(crate) fn read_u32_le(bytes: &Bytes, offset: u32) -> u32 {
     let b0 = bytes.get(offset).expect("missing byte") as u32;
     let b1 = bytes.get(offset + 1).expect("missing byte") as u32;
     let b2 = bytes.get(offset + 2).expect("missing byte") as u32;
@@ -92,15 +93,17 @@ fn read_u32_le(bytes: &Bytes, offset: u32) -> u32 {
     b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
 }
 
-fn read_bytes65(env: &Env, bytes: &Bytes, offset: u32) -> BytesN<65> {
+/// Read 65 bytes where each byte is stored as a 4-byte word (RISC0 format)
+pub(crate) fn read_bytes65_words(e: &Env, bytes: &Bytes, offset: u32) -> BytesN<65> {
     let mut arr = [0u8; 65];
     for i in 0..65 {
-        arr[i as usize] = bytes.get(offset + i).expect("missing byte");
+        // Each byte is stored as a little-endian u32, we only need the lowest byte
+        arr[i as usize] = bytes.get(offset + i * 4).expect("missing byte");
     }
-    BytesN::from_array(env, &arr)
+    BytesN::from_array(e, &arr)
 }
 
-fn read_i128_le(bytes: &Bytes, offset: u32) -> i128 {
+pub(crate) fn read_i128_le(bytes: &Bytes, offset: u32) -> i128 {
     let mut arr = [0u8; 16];
     for i in 0..16 {
         arr[i as usize] = bytes.get(offset + i).expect("missing byte");
@@ -108,7 +111,7 @@ fn read_i128_le(bytes: &Bytes, offset: u32) -> i128 {
     i128::from_le_bytes(arr)
 }
 
-fn read_i32_le(bytes: &Bytes, offset: u32) -> i32 {
+pub(crate) fn read_i32_le(bytes: &Bytes, offset: u32) -> i32 {
     let b0 = bytes.get(offset).expect("missing byte") as u32;
     let b1 = bytes.get(offset + 1).expect("missing byte") as u32;
     let b2 = bytes.get(offset + 2).expect("missing byte") as u32;
@@ -116,13 +119,13 @@ fn read_i32_le(bytes: &Bytes, offset: u32) -> i32 {
     (b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)) as i32
 }
 
-fn read_string(env: &Env, bytes: &Bytes, offset: u32, len: u32) -> String {
+pub(crate) fn read_string(e: &Env, bytes: &Bytes, offset: u32, len: u32) -> String {
     let mut arr = [0u8; 56]; // Stellar addresses are 56 chars
     let actual_len = if len > 56 { 56 } else { len };
     for i in 0..actual_len {
         arr[i as usize] = bytes.get(offset + i).expect("missing byte");
     }
-    String::from_bytes(env, &arr[..actual_len as usize])
+    String::from_bytes(e, &arr[..actual_len as usize])
 }
 
 #[contract]
@@ -130,7 +133,6 @@ pub struct EmailPaymentGateway;
 
 #[contractimpl]
 impl EmailPaymentGateway {
-    /// Constructor: stores the RISC0 verifier contract address in instance storage.
     pub fn __constructor(
         e: &Env,
         risc0_verifier: Address,
@@ -171,7 +173,7 @@ impl EmailPaymentGateway {
         // Decode and return the journal contents
         let output = decode_journal(e, &journal);
 
-        if output.verified {
+        if !output.verified {
             panic_with_error!(e, Errors::EmailUnverified)
         }
 
@@ -186,12 +188,12 @@ impl EmailPaymentGateway {
         let verifier_addr = Self::get_risc0_verifier(e);
         let client = RiscZeroVerifierClient::new(e, &verifier_addr);
 
-        let journal_digest = e.crypto().sha256(&journal);
-        // panics if can't verify
-        client.verify(&seal, &image_id, &journal_digest.into());
+        let journal_digest = e.crypto().sha256(&journal).into();
+        // Panics if can't verify
+        client.verify(&seal, &image_id, &journal_digest);
 
         // TODO: change salt
-        let deployer = e.deployer().with_current_contract(image_id);
+        let deployer = e.deployer().with_current_contract(journal_digest);
         let wasm_hash = e.deployer().upload_contract_wasm(WASM);
 
         // passkey
@@ -206,9 +208,17 @@ impl EmailPaymentGateway {
         // usdc contract - from this storage
         // sender account
         // amount
-        // -> .transfer()
+        // -> .transfer_from()
         let token_addr = Self::get_token(e);
         let token = TokenClient::new(e, &token_addr);
-        token.transfer(&sender, &receiver, &output.amount);
+        token.transfer_from(
+            &e.current_contract_address(),
+            &sender,
+            &receiver,
+            &output.amount,
+        );
     }
 }
+
+#[cfg(test)]
+mod test;

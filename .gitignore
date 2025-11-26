@@ -15,6 +15,7 @@ target/
 
 testdata/**
 /profile.pb
+test_snapshots
 receipt*
 groth16_proof*
 config.toml
