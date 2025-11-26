@@ -35,6 +35,7 @@ chrono = "0.4"
 
 # Email parsing
 mailparse = "0.15"
+email-parser = { path = "../email-parser" }
 
 # Config
 toml = "0.8"

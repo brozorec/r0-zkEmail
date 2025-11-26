@@ -5,9 +5,6 @@ edition = "2021"
 
 [workspace]
 
-[lib]
-path = "src/lib.rs"
-
 [[bin]]
 name = "dkim_verify"
 path = "src/main.rs"
@@ -26,6 +23,7 @@ slog = "2.7.0"
 rsa = "=0.9.6"
 postcard = "1.0"
 zkemail-core = { path = "../../core" }
+email-parser = { path = "../../email-parser" }
 
 [patch.crates-io]
 sha2 = { git = "https://github.com/risc0/RustCrypto-hashes", tag = "sha2-v0.10.6-risczero.0" }

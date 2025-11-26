@@ -1,8 +1,8 @@
-use mailparse::{parse_mail, MailHeaderMap};
+use mailparse::MailHeaderMap;
 
 /// Extract the text body from a raw email
 pub fn get_email_body(raw_email: &[u8]) -> String {
-    let parsed = parse_mail(raw_email).expect("Failed to parse email");
+    let parsed = mailparse::parse_mail(raw_email).expect("Failed to parse email");
 
     // Try to get text/plain part from multipart email
     if !parsed.subparts.is_empty() {
@@ -193,7 +193,7 @@ PUBLIC_KEY: 04f947be0b3df0ae82c2fa88b371ee9eff17ca959d5c88932ca71d727619850f4542
             extract_email_address("My Name <sender@gmail.com>"),
             "sender@gmail.com"
         );
-        assert_eq!(extract_email_address("sever@ik.me"), "server@ik.me");
+        assert_eq!(extract_email_address("server@ik.me"), "server@ik.me");
         assert_eq!(
             extract_email_address("My Name <sender@gmail.com>, server@ik.me"),
             "sender@gmail.com"

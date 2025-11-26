@@ -1,5 +1,5 @@
 use cfdkim::{verify_email_with_key, DkimPublicKey};
-use dkim_verify::{
+use email_parser::{
     extract_email_address, extract_passkey, extract_payment_data, get_email_body, get_header,
 };
 use mailparse::parse_mail;
