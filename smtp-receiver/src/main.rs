@@ -10,6 +10,11 @@ use std::env;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Install rustls crypto provider (required for TLS)
+    rustls::crypto::ring::default_provider()
+        .install_default()
+        .expect("Failed to install rustls crypto provider");
+
     tracing_subscriber::fmt()
         .with_env_filter(tracing_subscriber::filter::EnvFilter::from_default_env())
         .init();

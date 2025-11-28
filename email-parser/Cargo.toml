@@ -4,4 +4,4 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-mailparse = "0.15"
+mailparse = "0.14"

@@ -6,6 +6,7 @@ edition = "2021"
 [features]
 default = []
 verify = ["host", "hex"]
+cuda = ["verify", "host/cuda"]
 
 [dependencies]
 # SMTP server
@@ -42,3 +43,6 @@ toml = "0.8"
 
 # Hex encoding (only needed with verify feature)
 hex = { version = "0.4", optional = true }
+
+# Crypto provider for rustls (required on some platforms)
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }

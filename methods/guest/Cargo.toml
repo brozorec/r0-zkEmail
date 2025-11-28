@@ -12,7 +12,7 @@ path = "src/main.rs"
 [dependencies]
 cfdkim = { git = "https://github.com/risc0-labs/dkim", default-features = false, features = [
 ] }
-mailparse = "0.14.0"
+mailparse = "0.14"
 risc0-zkvm = { version = "3.0.0", default-features = false, features = [
 	"std",
 	"unstable",
