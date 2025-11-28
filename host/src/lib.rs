@@ -19,7 +19,7 @@ pub async fn verify_email_pair(
     sender_raw: &str,
     receiver_domain: &str,
     receiver_raw: &str,
-) -> Result<PaymentReceipt> {
+) -> Result<risc0_zkvm::Receipt> {
     info!("Verifying sender email from domain: {}", sender_domain);
     let sender_email = prepare_email(sender_domain, sender_raw).await?;
 
@@ -121,7 +121,7 @@ async fn prepare_email(from_domain: &str, raw_email: &str) -> Result<Email> {
     }
 }
 
-fn generate_and_verify_proof(email_pair: &EmailPair) -> Result<PaymentReceipt> {
+fn generate_and_verify_proof(email_pair: &EmailPair) -> Result<risc0_zkvm::Receipt> {
     debug!("Starting ZK proof generation");
 
     let prover = default_prover();
@@ -154,9 +154,7 @@ fn generate_and_verify_proof(email_pair: &EmailPair) -> Result<PaymentReceipt> {
     info!("Receipt compressed successfully");
 
     // Convert to Groth16 format
-    let _groth16_receipt = convert_to_groth16(&prover, &succinct_receipt)?;
-
-    Ok(output)
+    convert_to_groth16(&prover, &succinct_receipt)
 }
 
 fn convert_to_groth16(
@@ -171,17 +169,12 @@ fn convert_to_groth16(
         return Ok(receipt.clone());
     }
 
-    info!("Compressing to Groth16 using Docker...");
+    info!("Compressing to Groth16...");
     let groth16_receipt = prover
         .compress(&risc0_zkvm::ProverOpts::groth16(), receipt)
         .map_err(|e| anyhow!("Failed to compress to Groth16: {}", e))?;
 
     info!("Groth16 receipt generated successfully!");
-
-    std::fs::write("groth16_receipt.bin", bincode::serialize(&groth16_receipt)?)?;
-    info!("Groth16 receipt saved to groth16_receipt.bin");
-    info!("\nTo extract proof data for Stellar contract submission, run:");
-    info!("  cargo run --bin extractor [path/to/groth16_receipt.bin]");
 
     Ok(groth16_receipt)
 }

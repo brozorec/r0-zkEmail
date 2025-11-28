@@ -39,19 +39,13 @@ impl EmailHandler {
         info!("Extracted domain: {}", from_domain);
 
         if !self.is_domain_allowed(&from_domain) {
-            warn!(
-                "Domain {} not in allowed list, skipping",
-                from_domain
-            );
+            warn!("Domain {} not in allowed list, skipping", from_domain);
             return Ok(());
         }
 
         // Process email through the store to match pairs
         // Email is saved to disk only if it results in Stored or Matched
-        let match_result = self
-            .email_store
-            .process_email(raw_email, from, to)
-            .await;
+        let match_result = self.email_store.process_email(raw_email, from, to).await;
 
         match match_result {
             MatchResult::Stored {
@@ -84,7 +78,9 @@ impl EmailHandler {
                 warn!("Email has no Message-ID, cannot track for pairing. Skipping.");
             }
             MatchResult::InvalidFormat => {
-                warn!("Email does not match expected format (no payment data or passkey). Skipping.");
+                warn!(
+                    "Email does not match expected format (no payment data or passkey). Skipping."
+                );
             }
         }
 
@@ -105,7 +101,7 @@ impl EmailHandler {
             sender_domain, receiver_domain
         );
 
-        let output = verify_email_pair(
+        let receipt = verify_email_pair(
             &sender_domain,
             &sender_email.raw_email,
             &receiver_domain,
@@ -113,37 +109,15 @@ impl EmailHandler {
         )
         .await?;
 
-        info!("Email pair verification result: {:?}", output);
-
-        let proof_filename = format!(
-            "pair_{}_{}.json",
+        let receipt_filename = format!(
+            "receipt_{}_{}.bin",
             Utc::now().format("%Y%m%d_%H%M%S"),
             sender_email.message_id.replace(['@', '.', '<', '>'], "_")
         );
-        let proof_path = self.config.storage.proof_dir.join(&proof_filename);
+        let receipt_path = self.config.storage.proof_dir.join(&receipt_filename);
 
-        let proof_data = serde_json::json!({
-            "timestamp": Utc::now().to_rfc3339(),
-            "sender": {
-                "from": sender_email.from,
-                "domain": sender_domain,
-                "message_id": sender_email.message_id,
-            },
-            "receiver": {
-                "from": receiver_email.from,
-                "domain": receiver_domain,
-                "message_id": receiver_email.message_id,
-            },
-            "output": {
-                "sender": output.sender,
-                "amount": output.amount,
-                "nonce": output.nonce,
-                "verified": output.verified,
-            }
-        });
-
-        fs::write(&proof_path, serde_json::to_string_pretty(&proof_data)?).await?;
-        info!("Saved proof data to: {}", proof_path.display());
+        fs::write(&receipt_path, bincode::serialize(&receipt)).await?;
+        info!("Saved receipt to: {}", receipt_path.display());
 
         Ok(())
     }
