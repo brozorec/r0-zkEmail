@@ -1,6 +1,7 @@
 use anyhow::{anyhow, Result};
 use host::verify_email_pair;
 use std::{env, fs::File, io::Read, path::PathBuf};
+use zkemail_core::PaymentReceipt;
 
 async fn verify(
     sender_domain: &str,
@@ -11,7 +12,9 @@ async fn verify(
     let sender_raw = read_email_file(sender_path)?;
     let receiver_raw = read_email_file(receiver_path)?;
 
-    let output = verify_email_pair(sender_domain, &sender_raw, receiver_domain, &receiver_raw).await?;
+    let receipt =
+        verify_email_pair(sender_domain, &sender_raw, receiver_domain, &receiver_raw).await?;
+    let output: PaymentReceipt = receipt.journal.decode()?;
 
     println!("\n=== Payment Receipt ===");
     println!("Sender (Stellar): {}", output.sender);

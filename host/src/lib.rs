@@ -9,7 +9,7 @@ use methods::{DKIM_VERIFY_ELF, DKIM_VERIFY_ID};
 use risc0_zkvm::{default_prover, ExecutorEnv, Prover};
 use slog::{o, Discard, Logger};
 use trust_dns_resolver::TokioAsyncResolver;
-use zkemail_core::{Email, EmailPair, PaymentReceipt};
+use zkemail_core::{Email, EmailPair};
 
 /// Verify a pair of emails and generate a ZK proof
 /// - sender_email: Original email with PAYMENT DATA
@@ -137,7 +137,6 @@ fn generate_and_verify_proof(email_pair: &EmailPair) -> Result<risc0_zkvm::Recei
         .map_err(|e| anyhow!("Failed to generate proof: {}", e))?;
 
     let receipt = prove_info.receipt;
-    let output: PaymentReceipt = receipt.journal.decode()?;
 
     receipt
         .verify(DKIM_VERIFY_ID)
