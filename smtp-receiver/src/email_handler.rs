@@ -116,7 +116,9 @@ impl EmailHandler {
         );
         let receipt_path = self.config.storage.proof_dir.join(&receipt_filename);
 
-        fs::write(&receipt_path, bincode::serialize(&receipt)).await?;
+        let receipt_bytes = bincode::serialize(&receipt)
+            .map_err(|e| anyhow!("Failed to serialize receipt: {}", e))?;
+        fs::write(&receipt_path, receipt_bytes).await?;
         info!("Saved receipt to: {}", receipt_path.display());
 
         Ok(())

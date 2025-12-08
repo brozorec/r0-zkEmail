@@ -23,3 +23,5 @@ log
 .stfolder/
 .stignore
 certs/
+proofs/
+received_emails/

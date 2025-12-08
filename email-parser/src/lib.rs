@@ -59,6 +59,7 @@ pub fn extract_payment_data(body: &str) -> Option<(String, i128, i32)> {
 /// ---BEGIN PASSKEY DATA---
 /// PUBLIC_KEY: <hex_encoded_65_byte_key>
 /// ---END PASSKEY DATA---
+/// Also supports multi-line format where the key is on the next line(s)
 pub fn extract_passkey(body: &str) -> Option<Vec<u8>> {
     let start_marker = "---BEGIN PASSKEY DATA---";
     // Be flexible with end marker (allow 2 or 3 dashes)
@@ -66,12 +67,38 @@ pub fn extract_passkey(body: &str) -> Option<Vec<u8>> {
     let end = find_end_marker(body, "---END PASSKEY DATA")?.min(body.len());
     let data_block = &body[start..end];
 
+    let mut found_key_label = false;
+    let mut hex_parts = Vec::new();
+
     for line in data_block.lines() {
         let line = line.trim();
-        if let Some(value) = line.strip_prefix("PUBLIC_KEY:") {
-            let hex_key = clean_value(value);
-            return hex_decode(&hex_key);
+
+        // Skip empty lines
+        if line.is_empty() {
+            continue;
         }
+
+        if let Some(value) = line.strip_prefix("PUBLIC_KEY:") {
+            found_key_label = true;
+            let trimmed_value = clean_value(value);
+            // If value is on the same line, try to decode it
+            if !trimmed_value.is_empty() {
+                return hex_decode(&trimmed_value);
+            }
+            // Otherwise, continue to collect hex from next lines
+        } else if found_key_label {
+            // This line should be part of the hex key
+            let cleaned = clean_value(line);
+            if !cleaned.is_empty() {
+                hex_parts.push(cleaned);
+            }
+        }
+    }
+
+    // If we found the label and collected hex parts, try to decode
+    if found_key_label && !hex_parts.is_empty() {
+        let combined_hex = hex_parts.join("");
+        return hex_decode(&combined_hex);
     }
 
     None
@@ -169,6 +196,41 @@ Hi thanks
 
 ---BEGIN PASSKEY DATA---
 PUBLIC_KEY: 04f947be0b3df0ae82c2fa88b371ee9eff17ca959d5c88932ca71d727619850f4542f8f11538910c3e5dfe116264adca5025a49fd60747b1ba820f90e2d96ba14b
+---END PASSKEY DATA---
+"#;
+
+        let result = extract_passkey(body);
+        assert!(result.is_some());
+        let passkey = result.unwrap();
+        assert_eq!(passkey.len(), 65);
+        assert_eq!(passkey[0], 0x04); // Uncompressed key prefix
+    }
+
+    #[test]
+    fn test_extract_passkey_multiline() {
+        // Test multi-line format where PUBLIC_KEY value is on separate lines
+        let body = r#"
+---BEGIN PASSKEY DATA---
+PUBLIC_KEY:
+04beb2f6bb9f9b9406c46292957836aa6bddde48131ea0fabb33c0aa39f3c9a0641d2be6caf248c91de35f5113382a046e8fc946598d028d820b056d209019f47c
+---END PASSKEY DATA--
+"#;
+
+        let result = extract_passkey(body);
+        assert!(result.is_some());
+        let passkey = result.unwrap();
+        assert_eq!(passkey.len(), 65);
+        assert_eq!(passkey[0], 0x04); // Uncompressed key prefix
+    }
+
+    #[test]
+    fn test_extract_passkey_multiline_wrapped() {
+        // Test multi-line format where hex is wrapped across multiple lines
+        let body = r#"
+---BEGIN PASSKEY DATA---
+PUBLIC_KEY:
+04beb2f6bb9f9b9406c46292957836aa6bddde48131ea0fabb33c0aa39f3c9a064
+1d2be6caf248c91de35f5113382a046e8fc946598d028d820b056d209019f47c
 ---END PASSKEY DATA---
 "#;
 
