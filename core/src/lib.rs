@@ -20,7 +20,7 @@ pub struct EmailPair {
 }
 
 /// Output from the zkVM guest matching JournalOutput in contracts
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PaymentReceipt {
     /// Receiver's passkey public key (65 bytes, uncompressed secp256r1)
     pub receiver_pub_key: Vec<u8>,
