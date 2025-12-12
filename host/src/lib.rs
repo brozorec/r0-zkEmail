@@ -34,8 +34,18 @@ pub async fn verify_email_pair(
     generate_and_verify_proof(&email_pair)
 }
 
+/// Normalize line endings to CRLF as required by DKIM specification (RFC 6376)
+//fn normalize_to_crlf(input: &str) -> String {
+//let normalized = input.replace("\r\n", "\n").replace('\r', "\n");
+//normalized.replace('\n', "\r\n")
+//}
+
 /// Prepare a single email for proof generation by extracting DKIM public key
 async fn prepare_email(from_domain: &str, raw_email: &str) -> Result<Email> {
+    // Normalize line endings to CRLF for DKIM verification
+    //let raw_email = normalize_to_crlf(raw_email);
+    let raw_email = raw_email.as_str();
+
     let logger = Logger::root(Discard, o!());
     let email = mailparse::parse_mail(raw_email.as_bytes())
         .map_err(|e| anyhow!("Failed to parse email: {}", e))?;
