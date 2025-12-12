@@ -1,0 +1,8 @@
+target/
+.git/
+.cache/
+.local/
+.risc0/
+*.bin
+*.json
+README.md
