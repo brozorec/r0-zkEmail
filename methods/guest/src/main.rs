@@ -1,6 +1,7 @@
 use cfdkim::{verify_email_with_key, DkimPublicKey};
 use email_parser::{
     extract_email_address, extract_passkey, extract_payment_data, get_email_body, get_header,
+    PasskeyData,
 };
 use mailparse::parse_mail;
 use risc0_zkvm::guest::env;
@@ -53,11 +54,15 @@ fn main() {
 
     // Extract passkey from receiver's email (DKIM verified)
     let receiver_body = get_email_body(&input.receiver_email.raw_email);
-    let receiver_passkey =
-        extract_passkey(&receiver_body).expect("Failed to extract passkey from receiver email");
+    let PasskeyData {
+        public_key: receiver_pub_key,
+        cred_id: receiver_cred_id,
+    } = extract_passkey(&receiver_body)
+        .expect("Failed to extract passkey data from receiver email");
 
     let output = PaymentReceipt {
-        receiver_passkey,
+        receiver_pub_key,
+        receiver_cred_id,
         amount,
         sender: stellar_sender,
         nonce,

@@ -27,7 +27,8 @@ enum DataKey {
 #[contracttype]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct JournalOutput {
-    pub receiver_passkey: BytesN<65>,
+    pub receiver_pub_key: Bytes,
+    pub receiver_cred_id: Bytes,
     pub amount: i128,
     pub sender: String,
     pub nonce: i32,
@@ -38,8 +39,10 @@ pub struct JournalOutput {
 ///
 /// RISC0 journal uses word-aligned serialization where each byte/char is stored as u32.
 /// Format:
-/// - 4 bytes: length of receiver_passkey (should be 65)
-/// - 65 * 4 bytes: receiver_passkey (each byte as u32)
+/// - 4 bytes: length of receiver_pub_key (should be 65)
+/// - 65 * 4 bytes: receiver_pub_key (each byte as u32)
+/// - 4 bytes: length of receiver_cred_id (variable)
+/// - N * 4 bytes: receiver_cred_id (each byte as u32)
 /// - 16 bytes: amount (i128, little-endian)
 /// - 4 bytes: length of sender string
 /// - N * 4 bytes: sender string (each char as u32)
@@ -48,14 +51,20 @@ pub struct JournalOutput {
 pub(crate) fn decode_journal(e: &Env, journal: &Bytes) -> JournalOutput {
     let mut offset: u32 = 0;
 
-    // Read receiver_passkey length (4 bytes, little-endian)
-    let passkey_len = read_u32_le(journal, offset);
-    assert!(passkey_len == 65, "receiver_passkey must be 65 bytes");
+    // Read receiver_pub_key length (4 bytes, little-endian)
+    let pubkey_len = read_u32_le(journal, offset);
+    assert!(pubkey_len == 65, "receiver_pub_key must be 65 bytes");
     offset += 4;
 
-    // Read receiver_passkey (65 bytes, each stored as u32)
-    let receiver_passkey = read_bytes65_words(e, journal, offset);
+    // Read receiver_pub_key (65 bytes, each stored as u32)
+    let receiver_pub_key = read_bytes_words(e, journal, offset, pubkey_len);
     offset += 65 * 4;
+
+    // Read receiver_cred_id length and bytes
+    let credential_len = read_u32_le(journal, offset);
+    offset += 4;
+    let receiver_cred_id = read_bytes_words(e, journal, offset, credential_len);
+    offset += credential_len * 4;
 
     // Read amount (16 bytes, i128 little-endian)
     let amount = read_i128_le(journal, offset);
@@ -77,7 +86,8 @@ pub(crate) fn decode_journal(e: &Env, journal: &Bytes) -> JournalOutput {
     let verified = read_u32_le(journal, offset) != 0;
 
     JournalOutput {
-        receiver_passkey,
+        receiver_pub_key,
+        receiver_cred_id,
         amount,
         sender,
         nonce,
@@ -93,14 +103,14 @@ pub(crate) fn read_u32_le(bytes: &Bytes, offset: u32) -> u32 {
     b0 | (b1 << 8) | (b2 << 16) | (b3 << 24)
 }
 
-/// Read 65 bytes where each byte is stored as a 4-byte word (RISC0 format)
-pub(crate) fn read_bytes65_words(e: &Env, bytes: &Bytes, offset: u32) -> BytesN<65> {
-    let mut arr = [0u8; 65];
-    for i in 0..65 {
-        // Each byte is stored as a little-endian u32, we only need the lowest byte
-        arr[i as usize] = bytes.get(offset + i * 4).expect("missing byte");
+/// Read variable-length bytes stored as 4-byte words
+pub(crate) fn read_bytes_words(e: &Env, bytes: &Bytes, offset: u32, len: u32) -> Bytes {
+    let mut out = Bytes::new(e);
+    for i in 0..len {
+        let value = bytes.get(offset + i * 4).expect("missing byte");
+        out.push_back(value);
     }
-    BytesN::from_array(e, &arr)
+    out
 }
 
 pub(crate) fn read_i128_le(bytes: &Bytes, offset: u32) -> i128 {
@@ -199,9 +209,10 @@ impl EmailPaymentGateway {
         // passkey
         // passkey verifier addr - from this storage
         // -> deploy smart account with passkey
-        let passkey = output.receiver_passkey;
+        let mut passkey = output.receiver_pub_key;
+        passkey.append(&output.receiver_cred_id);
         let passkey_verifier = Self::get_passkey_verifier(e);
-        let signers = vec![e, Signer::External(passkey_verifier, passkey.into())];
+        let signers = vec![e, Signer::External(passkey_verifier, passkey)];
         let policies: Map<Address, Val> = map![e];
         let receiver = deployer.deploy_v2(wasm_hash, (signers, policies));
 

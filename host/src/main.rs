@@ -20,7 +20,8 @@ async fn verify(
     println!("Sender (Stellar): {}", output.sender);
     println!("Amount: {}", output.amount);
     println!("Nonce: {}", output.nonce);
-    println!("Passkey: {} bytes", output.receiver_passkey.len());
+    println!("Pubkey: {} bytes", output.receiver_pub_key.len());
+    println!("Credential: {} bytes", output.receiver_cred_id.len());
     println!("Verified: {}", output.verified);
 
     Ok(())

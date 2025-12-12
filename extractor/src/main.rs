@@ -83,7 +83,8 @@ fn extract_groth16_proof_data(receipt: &risc0_zkvm::Receipt) -> Result<()> {
     println!("Sender (Stellar): {}", output.sender);
     println!("Amount: {}", output.amount);
     println!("Nonce: {}", output.nonce);
-    println!("Passkey: {} bytes", output.receiver_passkey.len());
+    println!("Pubkey: {} bytes", output.receiver_pub_key.len());
+    println!("Credential: {} bytes", output.receiver_cred_id.len());
     println!("Verified: {}", output.verified);
 
     // Compute SHA-256 digest of the journal (required by Stellar verifier)

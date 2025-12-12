@@ -23,7 +23,9 @@ pub struct EmailPair {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PaymentReceipt {
     /// Receiver's passkey public key (65 bytes, uncompressed secp256r1)
-    pub receiver_passkey: Vec<u8>,
+    pub receiver_pub_key: Vec<u8>,
+    /// Credential identifier associated with the receiver's passkey
+    pub receiver_cred_id: Vec<u8>,
     /// Payment amount in stroops
     pub amount: i128,
     /// Sender's Stellar address
