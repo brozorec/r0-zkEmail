@@ -155,8 +155,14 @@ email_dir = "/var/smtp-receiver/emails"
 proof_dir = "/var/smtp-receiver/proofs"
 
 [processing]
-auto_verify = true
-extract_domain_from_sender = true
+validate_email_format = true
+
+[runpod]
+# Required when running binaries built without the `verify` feature
+runpod_url = "https://nacgo2o3dv4i5h.api.runpod.ai/generate"
+runpod_key = "RUNPOD_API_KEY"
+retry_attempts = 3
+retry_delay_decs = 10
 ```
 
 ### 6. Create Storage Directories

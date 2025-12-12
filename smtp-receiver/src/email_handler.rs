@@ -1,11 +1,9 @@
-use anyhow::{anyhow, Result};
-use log::{error, info, warn};
-use tokio::fs;
-
-#[cfg(feature = "verify")]
+use anyhow::{anyhow, Context, Result};
 use chrono::Utc;
+use log::{error, info, warn};
+use tokio::{fs, time::sleep};
 
-use crate::config::Config;
+use crate::config::{Config, RunpodConfig};
 use crate::email_store::{EmailStore, MatchResult, PendingEmail};
 
 #[cfg(feature = "verify")]
@@ -109,19 +107,11 @@ impl EmailHandler {
         )
         .await?;
 
-        let receipt_filename = format!(
-            "receipt_{}_{}.bin",
-            Utc::now().format("%Y%m%d_%H%M%S"),
-            sender_email.message_id.replace(['@', '.', '<', '>'], "_")
-        );
-        let receipt_path = self.config.storage.proof_dir.join(&receipt_filename);
-
         let receipt_bytes = bincode::serialize(&receipt)
             .map_err(|e| anyhow!("Failed to serialize receipt: {}", e))?;
-        fs::write(&receipt_path, receipt_bytes).await?;
-        info!("Saved receipt to: {}", receipt_path.display());
 
-        Ok(())
+        self.save_receipt(&sender_email.message_id, &receipt_bytes)
+            .await
     }
 
     #[cfg(not(feature = "verify"))]
@@ -130,11 +120,109 @@ impl EmailHandler {
         sender_email: &PendingEmail,
         receiver_email: &PendingEmail,
     ) -> Result<()> {
-        warn!(
-            "Verification disabled (build without 'verify' feature). \
-             Email pair from {} and {} saved but not verified.",
-            sender_email.from, receiver_email.from
+        let runpod_config = self
+            .config
+            .runpod
+            .as_ref()
+            .ok_or_else(|| anyhow!("Runpod configuration missing for verification"))?;
+
+        let sender_domain = self.extract_domain(&sender_email.from)?;
+        let receiver_domain = self.extract_domain(&receiver_email.from)?;
+
+        info!(
+            "Starting Runpod verification for email pair. Sender domain: {}, Receiver domain: {}",
+            sender_domain, receiver_domain
         );
+
+        let receipt = self
+            .verify_via_runpod(
+                runpod_config,
+                &sender_domain,
+                &sender_email.raw_email,
+                &receiver_domain,
+                &receiver_email.raw_email,
+            )
+            .await?;
+
+        self.save_receipt(&sender_email.message_id, &receipt).await
+    }
+
+    #[cfg(not(feature = "verify"))]
+    async fn verify_via_runpod(
+        &self,
+        runpod_config: &RunpodConfig,
+        sender_domain: &str,
+        sender_raw: &str,
+        receiver_domain: &str,
+        receiver_raw: &str,
+    ) -> Result<Vec<u8>> {
+        let client = reqwest::Client::new();
+        let mut attempt = 0;
+        loop {
+            attempt += 1;
+            let response = client
+                .post(&runpod_config.runpod_url)
+                .bearer_auth(&runpod_config.runpod_key)
+                .json(&serde_json::json!({
+                    "sender_domain": sender_domain,
+                    "sender_raw": sender_raw,
+                    "receiver_domain": receiver_domain,
+                    "receiver_raw": receiver_raw,
+                }))
+                .send()
+                .await;
+
+            match response {
+                Ok(resp) if resp.status().is_success() => {
+                    let bytes = resp
+                        .bytes()
+                        .await
+                        .context("Failed to read Runpod response body")?;
+                    return Ok(bytes.to_vec());
+                }
+                Ok(resp) => {
+                    warn!(
+                        "Runpod request failed with status {} on attempt {}",
+                        resp.status(),
+                        attempt
+                    );
+                }
+                Err(err) => {
+                    warn!(
+                        "Runpod request error on attempt {}: {}",
+                        attempt,
+                        err
+                    );
+                }
+            }
+
+            if attempt >= runpod_config.retry_attempts {
+                return Err(anyhow!(
+                    "Runpod verification failed after {} attempts",
+                    attempt
+                ));
+            }
+
+            sleep(std::time::Duration::from_millis(
+                runpod_config.retry_delay_decs * 100,
+            ))
+            .await;
+        }
+    }
+
+    async fn save_receipt(&self, message_id: &str, receipt_bytes: &[u8]) -> Result<()> {
+        let receipt_filename = format!(
+            "receipt_{}_{}.bin",
+            Utc::now().format("%Y%m%d_%H%M%S"),
+            message_id.replace(['@', '.', '<', '>'], "_")
+        );
+        let receipt_path = self.config.storage.proof_dir.join(&receipt_filename);
+
+        fs::write(&receipt_path, receipt_bytes)
+            .await
+            .with_context(|| format!("Failed to write receipt file {}", receipt_path.display()))?;
+        info!("Saved receipt to: {}", receipt_path.display());
+
         Ok(())
     }
 

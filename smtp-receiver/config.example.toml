@@ -36,3 +36,14 @@ proof_dir = "./proofs"
 # If true, only emails with valid payment data or passkey blocks are saved
 # If false, all emails are saved regardless of content
 validate_email_format = true
+
+[runpod]
+# Remote verification endpoint (used when binary is built without `verify` feature)
+runpod_url = "https://nacgo2o3dv4i5h.api.runpod.ai/generate"
+runpod_key = "RUNPOD_API_KEY"
+
+# Number of attempts for Runpod verification (default: 3)
+retry_attempts = 3
+
+# Delay between retries in deciseconds (default: 10 = 1s)
+retry_delay_decs = 10

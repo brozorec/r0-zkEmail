@@ -7,6 +7,8 @@ pub struct Config {
     pub storage: StorageConfig,
     #[serde(default)]
     pub processing: ProcessingConfig,
+    #[serde(default)]
+    pub runpod: Option<RunpodConfig>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -37,6 +39,24 @@ pub struct ProcessingConfig {
     pub validate_email_format: bool,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RunpodConfig {
+    pub runpod_url: String,
+    pub runpod_key: String,
+    #[serde(default = "default_retry_attempts")]
+    pub retry_attempts: u32,
+    #[serde(default = "default_retry_delay_decs")]
+    pub retry_delay_decs: u64,
+}
+
+fn default_retry_attempts() -> u32 {
+    3
+}
+
+fn default_retry_delay_decs() -> u64 {
+    10 // 1 second
+}
+
 impl Default for Config {
     fn default() -> Self {
         Self {
@@ -57,6 +77,7 @@ impl Default for Config {
             processing: ProcessingConfig {
                 validate_email_format: true,
             },
+            runpod: None,
         }
     }
 }

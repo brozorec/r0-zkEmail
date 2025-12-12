@@ -32,8 +32,14 @@ email_dir = "./received_emails"
 proof_dir = "./proofs"
 
 [processing]
-auto_verify = true
-extract_domain_from_sender = true
+validate_email_format = true
+
+[runpod]
+# Required only when compiling without the `verify` feature
+runpod_url = "https://nacgo2o3dv4i5h.api.runpod.ai/generate"
+runpod_key = "RUNPOD_API_KEY"
+retry_attempts = 3
+retry_delay_decs = 10
 ```
 
 ### 2. Run the Server
@@ -73,8 +79,18 @@ swaks --to test@yourdomain.com \
 
 ### Processing Settings
 
-- **`auto_verify`**: Automatically verify DKIM and generate proofs
-- **`extract_domain_from_sender`**: Extract domain from sender email address
+- **`validate_email_format`**: If true, only store emails that match the expected payment/passkey format
+
+### Runpod Settings (non-`verify` builds)
+
+When running a binary compiled **without** the `verify` feature, verification is delegated to a remote Runpod worker. These settings configure the HTTP client the SMTP receiver uses:
+
+- **`runpod_url`**: HTTPS endpoint that accepts the verification payload
+- **`runpod_key`**: Bearer token used for authentication
+- **`retry_attempts`** *(optional, default `3`)*: Number of times to retry failed requests
+- **`retry_delay_decs`** *(optional, default `10` = 1s)*: Delay between retries in deciseconds
+
+If the `runpod` section is missing while running a non-verify build, matched email pairs will fail verification.
 
 ## Infrastructure Setup
 
