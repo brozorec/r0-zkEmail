@@ -1,0 +1,4 @@
+[submodule "frontend/vendor/stellar-contracts"]
+	path = frontend/vendor/stellar-contracts
+	url = https://github.com/kalepail/stellar-contracts.git
+	branch = kalepail-edit
