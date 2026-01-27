@@ -32,6 +32,8 @@ export function useBalance({
   const { getCachedBalance, setCachedBalance } = useBalanceCache();
   const previousBalanceRef = useRef<bigint | null>(null);
   const onBalanceChangeRef = useRef(onBalanceChange);
+  const activeContractIdRef = useRef<string | null>(contractId);
+  const suppressNextChangeRef = useRef(false);
 
   useEffect(() => {
     onBalanceChangeRef.current = onBalanceChange;
@@ -40,37 +42,55 @@ export function useBalance({
   const fetchAndUpdateBalance = useCallback(async () => {
     if (!contractId) {
       setBalance(null);
+      previousBalanceRef.current = null;
       return;
     }
 
     setIsLoading(true);
     setError(null);
 
-    try {
-      const newBalance = await fetchBalance(contractId);
+    const requestContractId = contractId;
 
-      // Compare with previous balance
-      const previousBalance = previousBalanceRef.current;
-      if (previousBalance !== null && previousBalance !== newBalance) {
-        // Balance changed, notify callback
-        onBalanceChangeRef.current?.(previousBalance, newBalance);
+    try {
+      const newBalance = await fetchBalance(requestContractId);
+
+      if (activeContractIdRef.current !== requestContractId) {
+        return;
       }
 
-      // Update state and cache
+      const previousBalance = previousBalanceRef.current;
+      const shouldNotify =
+        !suppressNextChangeRef.current &&
+        previousBalance !== null &&
+        previousBalance !== newBalance;
+
+      if (suppressNextChangeRef.current) {
+        suppressNextChangeRef.current = false;
+      }
+
+      if (shouldNotify) {
+        onBalanceChangeRef.current?.(previousBalance as bigint, newBalance);
+      }
+
       setBalance(newBalance);
       previousBalanceRef.current = newBalance;
-      setCachedBalance(contractId, newBalance);
+      setCachedBalance(requestContractId, newBalance);
     } catch (err) {
       const error = err instanceof Error ? err : new Error('Failed to fetch balance');
       setError(error);
       console.error('Balance fetch error:', error);
     } finally {
-      setIsLoading(false);
+      if (activeContractIdRef.current === requestContractId) {
+        setIsLoading(false);
+      }
     }
   }, [contractId, setCachedBalance]);
 
   // Initialize with cached balance
   useEffect(() => {
+    activeContractIdRef.current = contractId;
+    suppressNextChangeRef.current = true;
+
     if (!contractId) {
       setBalance(null);
       previousBalanceRef.current = null;
@@ -81,6 +101,9 @@ export function useBalance({
     if (cached) {
       setBalance(cached.balance);
       previousBalanceRef.current = cached.balance;
+    } else {
+      setBalance(null);
+      previousBalanceRef.current = null;
     }
   }, [contractId, getCachedBalance]);
 
